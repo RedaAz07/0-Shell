@@ -104,6 +104,11 @@ fn main() -> io::Result<()> {
 
                             match parse_input(&input_buffer) {
                                 ParseResult::Ok(cmds) => {
+                                    if cmds.is_empty() {
+                                        input_buffer.clear();
+                                        is_continuation = false;
+                                        break;
+                                    }
                                     disable_raw_mode()?;
                                      execute(cmds[0].clone(), &mut pwd_state);
                                     enable_raw_mode()?;

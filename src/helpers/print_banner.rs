@@ -10,6 +10,7 @@ const BANNER: &str = "
     ╚═════╝       ╚══════╝╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝
 
 ";
+
 pub fn print_banner() {
     println!("{RED}{}{RESET}", BANNER);
 }
