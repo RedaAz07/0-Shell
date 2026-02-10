@@ -1,9 +1,7 @@
-use crate::commands::pwd_state::*;
-use super::executor::*;
 use std::process::Command;
 
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum CommandEnum {
     Rm(Vec<String>),
     Cp(Vec<String>),
@@ -25,8 +23,7 @@ pub enum ParseResult {
     Err(String),
 }
 
-fn parse_tokens(input: &str) -> Result<Vec<Vec<String>>, String> {
-    let mut commands: Vec<Vec<String>> = Vec::new();
+fn parse_tokens(input: &str) -> Result<Vec<String>, String> {
     let mut current_args: Vec<String> = Vec::new();
     let mut current_token = String::new();
 
@@ -70,23 +67,6 @@ fn parse_tokens(input: &str) -> Result<Vec<Vec<String>>, String> {
                         mode = Mode::Single;
                     } else if c == '"' {
                         mode = Mode::Double;
-                    } else if c == '&' {
-                        if let Some(&next_c) = chars.peek() {
-                            if next_c == '&' {
-                                chars.next();
-
-                                if !current_token.is_empty() {
-                                    current_args.push(current_token.clone());
-                                    current_token.clear();
-                                }
-                                if !current_args.is_empty() {
-                                    commands.push(current_args.clone());
-                                    current_args.clear();
-                                }
-                                continue;
-                            }
-                        }
-                        current_token.push(c);
                     } else if c.is_whitespace() {
                         if !current_token.is_empty() {
                             current_args.push(current_token.clone());
@@ -127,11 +107,8 @@ fn parse_tokens(input: &str) -> Result<Vec<Vec<String>>, String> {
     if !current_token.is_empty() {
         current_args.push(current_token);
     }
-    if !current_args.is_empty() {
-        commands.push(current_args);
-    }
 
-    Ok(commands)
+    Ok(current_args)
 }
 
 pub fn parse_input(input: &str) -> ParseResult {
@@ -139,44 +116,39 @@ pub fn parse_input(input: &str) -> ParseResult {
     if trimmed.is_empty() {
         return ParseResult::Ok(vec![]);
     }
-
     match parse_tokens(trimmed) {
-        Ok(tokenized_commands) => {
-            let mut cmds = Vec::new();
-
-            for args in tokenized_commands {
-                if args.is_empty() {
-                    continue;
-                }
-
-                let cmd = args[0].as_str();
-                let cmd_args = args[1..].to_vec();
-
-                let parsed = match cmd {
-                    "ls" => CommandEnum::Ls(cmd_args),
-                    "cat" => CommandEnum::Cat(cmd_args),
-                    "cp" => CommandEnum::Cp(cmd_args),
-                    "pwd" => CommandEnum::Pwd,
-                    "cd" => CommandEnum::Cd(cmd_args),
-                    "echo" => CommandEnum::Echo(cmd_args),
-                    "rm" => CommandEnum::Rm(cmd_args),
-                    "mkdir" => CommandEnum::Mkdir(cmd_args),
-                    "exit" => CommandEnum::Exit,
-                    "clear" => {
-                        execute_clear();
-                        continue;
-                    }
-                    _ => CommandEnum::Unknown(args[0].clone()),
-                };
-                cmds.push(parsed);
+        Ok(args) => {
+            if args.is_empty() {
+                return ParseResult::Ok(vec![]);
             }
-            ParseResult::Ok(cmds)
+
+            let cmd = args[0].as_str();
+            let cmd_args = args[1..].to_vec();
+
+            let parsed = match cmd {
+                "ls" => CommandEnum::Ls(cmd_args),
+                "cat" => CommandEnum::Cat(cmd_args),
+                "cp" => CommandEnum::Cp(cmd_args),
+                "pwd" => CommandEnum::Pwd,
+                "cd" => CommandEnum::Cd(cmd_args),
+                "echo" => CommandEnum::Echo(cmd_args),
+                "rm" => CommandEnum::Rm(cmd_args),
+                "mkdir" => CommandEnum::Mkdir(cmd_args),
+                "exit" => CommandEnum::Exit,
+                "clear" => {
+                    execute_clear();
+                    return ParseResult::Ok(vec![]);
+                }
+                _ => CommandEnum::Unknown(args[0].clone()),
+            };
+
+            ParseResult::Ok(vec![parsed])
         }
         Err(_) => ParseResult::Incomplete,
     }
 }
 
-pub fn execute_all(cmds: Vec<CommandEnum>, pwd_state: &mut PwdState) -> bool {
+/* pub fn execute_all(cmds: CommandEnum, pwd_state: &mut PwdState) -> bool {
     for cmd in cmds {
         let keep_running = execute(cmd, pwd_state);
         if !keep_running {
@@ -185,7 +157,7 @@ pub fn execute_all(cmds: Vec<CommandEnum>, pwd_state: &mut PwdState) -> bool {
     }
     true
 }
-
+ */
 pub fn execute_clear() {
     Command::new("clear")
         .status()

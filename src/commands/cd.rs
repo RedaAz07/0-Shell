@@ -31,14 +31,14 @@ pub fn command_cd(args: Vec<String>, pwd_state: &mut PwdState) {
 
     let current_before_move = match env::current_dir() {
         Ok(p) => p,
-        Err(e) =>
+        Err(_) =>
             env::var("PWD")
                 .map(PathBuf::from)
                 .unwrap_or_else(|_| {
-                    eprintln!("cd: Unable to determine current directory: {}", e);
                     PathBuf::from(".")
                 }),
     };
+    println!("{}",current_before_move.display());
 
     match env::set_current_dir(&target_dir) {
         Ok(_) => {

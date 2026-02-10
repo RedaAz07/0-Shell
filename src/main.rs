@@ -9,8 +9,10 @@ use crossterm::cursor::MoveToColumn;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::execute;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType};
-use helpers::parser::{execute_all, parse_input, ParseResult};
+use helpers::parser::{ parse_input, ParseResult};
 use helpers::print_banner::print_banner;
+
+use crate::helpers::executor::execute;
 
 const GREEN: &str = "\x1b[32m";
 const RESET: &str = "\x1b[0m";
@@ -103,14 +105,10 @@ fn main() -> io::Result<()> {
                             match parse_input(&input_buffer) {
                                 ParseResult::Ok(cmds) => {
                                     disable_raw_mode()?;
-                                    let keep_running = execute_all(cmds, &mut pwd_state);
+                                     execute(cmds[0].clone(), &mut pwd_state);
                                     enable_raw_mode()?;
 
-                                    if !keep_running {
-                                        disable_raw_mode()?;
-                                        std::process::exit(0);
-                                    }
-
+                                  
                                     input_buffer.clear();
                                     is_continuation = false;
                                     break;
