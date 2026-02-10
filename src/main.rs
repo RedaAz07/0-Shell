@@ -6,7 +6,6 @@ pub mod helpers;
 
 use commands::pwd_state::*;
 use crossterm::cursor::MoveToColumn;
-use crossterm::cursor::{self};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::execute;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType};
@@ -21,7 +20,6 @@ fn main() -> io::Result<()> {
     enable_raw_mode()?;
 
     let mut input_buffer = String::new();
-
     let mut is_continuation = false;
 
     let start_dir = env::current_dir().expect("Failed to get current working directory");
@@ -50,12 +48,15 @@ fn main() -> io::Result<()> {
         print!("{}", prompt_text);
         io::stdout().flush()?;
 
+        if !input_buffer.is_empty() {
+             print!("{}", input_buffer);
+             io::stdout().flush()?;
+        }
+
         loop {
             if let Event::Key(key_event) = event::read()? {
                 if key_event.kind == KeyEventKind::Press {
-                    let (current_x, current_y) = cursor::position().unwrap();
-
-                    let cursor_idx = (current_x as usize).saturating_sub(prompt_len);
+                   
 
                     match key_event.code {
                         KeyCode::Char(c) => {
@@ -63,57 +64,35 @@ fn main() -> io::Result<()> {
                                 print!("\r\n");
                                 disable_raw_mode()?;
                                 std::process::exit(0);
-                            } else if key_event.modifiers.contains(KeyModifiers::CONTROL)
-                                && c == 'c'
+                            } 
+                            // Handle Ctrl+C (Cancel)
+                            else if key_event.modifiers.contains(KeyModifiers::CONTROL) && c == 'c'
                             {
                                 print!("\r\n");
                                 input_buffer.clear();
                                 is_continuation = false;
                                 break;
                             }
-
-                            if cursor_idx >= input_buffer.len() {
-                                input_buffer.push(c);
-                            } else {
-                                input_buffer.insert(cursor_idx, c);
-                            }
-
-                            execute!(
-                                stdout(),
-                                cursor::MoveToColumn(prompt_len as u16),
-                                Clear(ClearType::UntilNewLine)
-                            )?;
-                            print!("{}", input_buffer);
-
-                            execute!(
-                                stdout(),
-                                cursor::MoveTo((prompt_len + cursor_idx + 1) as u16, current_y)
-                            )?;
+                            
+                            // CLEAN LOGIC: Just push to end and print char
+                            input_buffer.push(c);
+                            print!("{}", c);
                             io::stdout().flush()?;
                         }
 
                         KeyCode::Backspace => {
                             if !input_buffer.is_empty() {
-                                if cursor_idx > 0 && cursor_idx <= input_buffer.len() {
-                                    input_buffer.remove(cursor_idx - 1);
+                                // CLEAN LOGIC: Just pop the last char
+                                input_buffer.pop();
 
-                                    // Redraw line
-                                    execute!(
-                                        stdout(),
-                                        cursor::MoveToColumn(prompt_len as u16),
-                                        Clear(ClearType::UntilNewLine)
-                                    )?;
-                                    print!("{}", input_buffer);
-
-                                    execute!(
-                                        stdout(),
-                                        cursor::MoveTo(
-                                            (prompt_len + cursor_idx - 1) as u16,
-                                            current_y
-                                        )
-                                    )?;
-                                    io::stdout().flush()?;
-                                }
+                                // Redraw the line to visually remove the character
+                                execute!(
+                                    stdout(),
+                                    MoveToColumn(prompt_len as u16),
+                                    Clear(ClearType::UntilNewLine)
+                                )?;
+                                print!("{}", input_buffer);
+                                io::stdout().flush()?;
                             }
                         }
 
@@ -123,8 +102,6 @@ fn main() -> io::Result<()> {
 
                             match parse_input(&input_buffer) {
                                 ParseResult::Ok(cmds) => {
-                                   
-
                                     disable_raw_mode()?;
                                     let keep_running = execute_all(cmds, &mut pwd_state);
                                     enable_raw_mode()?;
@@ -139,7 +116,6 @@ fn main() -> io::Result<()> {
                                     break;
                                 }
                                 ParseResult::Incomplete => {
-                                
                                     input_buffer.push('\n');
                                     is_continuation = true;
                                     break;
@@ -152,10 +128,6 @@ fn main() -> io::Result<()> {
                                 }
                             }
                         }
-
-                        
-
-                       
                         
                         _ => {}
                     }

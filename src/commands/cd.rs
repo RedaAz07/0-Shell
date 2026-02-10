@@ -1,4 +1,4 @@
-use std::{env, io::ErrorKind, path::PathBuf};
+use std::{ env, io::ErrorKind, path::PathBuf };
 use crate::commands::pwd_state::PwdState;
 
 pub fn command_cd(args: Vec<String>, pwd_state: &mut PwdState) {
@@ -31,17 +31,20 @@ pub fn command_cd(args: Vec<String>, pwd_state: &mut PwdState) {
 
     let current_before_move = match env::current_dir() {
         Ok(p) => p,
-        Err(e) => {
-            eprintln!("cd: failed to get current directory: {}", e);
-            return;
-        }
+        Err(e) =>
+            env::var("PWD")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| {
+                    eprintln!("cd: Unable to determine current directory: {}", e);
+                    PathBuf::from(".")
+                }),
     };
 
     match env::set_current_dir(&target_dir) {
         Ok(_) => {
             if let Ok(new_current) = env::current_dir() {
                 pwd_state.set_states(
-                    new_current.display().to_string(), 
+                    new_current.display().to_string(),
                     current_before_move.display().to_string()
                 );
 
@@ -50,11 +53,15 @@ pub fn command_cd(args: Vec<String>, pwd_state: &mut PwdState) {
                 }
             }
         }
-        Err(e) => match e.kind() {
-            ErrorKind::NotFound => eprintln!("cd: {}: No such file or directory", target_dir.display()),
-            ErrorKind::PermissionDenied => eprintln!("cd: {}: Permission denied", target_dir.display()),
-            ErrorKind::NotADirectory => eprintln!("cd: {}: Not a directory", target_dir.display()),
-            _ => eprintln!("cd: {}: {}", target_dir.display(), e),
-        },
+        Err(e) =>
+            match e.kind() {
+                ErrorKind::NotFound =>
+                    eprintln!("cd: {}: No such file or directory", target_dir.display()),
+                ErrorKind::PermissionDenied =>
+                    eprintln!("cd: {}: Permission denied", target_dir.display()),
+                ErrorKind::NotADirectory =>
+                    eprintln!("cd: {}: Not a directory", target_dir.display()),
+                _ => eprintln!("cd: {}: {}", target_dir.display(), e),
+            }
     }
 }
