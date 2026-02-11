@@ -17,11 +17,9 @@ pub fn execute(cmd: CommandEnum, pwd_state: &mut PwdState) -> bool {
         }
         CommandEnum::Cat(c) => cat(c),
         CommandEnum::Cp(c) => {
-            if c.len() != 2 {
-                println!("cp: missing file operand");
-            } else {
+         
                 cp(c);
-            }
+            
         }
         CommandEnum::Pwd => {
             eprintln!("{}", pwd_state.get_current_dir());
