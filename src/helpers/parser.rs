@@ -128,6 +128,7 @@ pub fn parse_input(input: &str) -> ParseResult {
             let parsed = match cmd {
                 "ls" => CommandEnum::Ls(cmd_args),
                 "cat" => CommandEnum::Cat(cmd_args),
+                "mv" => CommandEnum::Mv(cmd_args),
                 "cp" => CommandEnum::Cp(cmd_args),
                 "pwd" => CommandEnum::Pwd,
                 "cd" => CommandEnum::Cd(cmd_args),
