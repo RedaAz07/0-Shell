@@ -3,7 +3,7 @@ pub mod cd;
 pub mod cp;
 pub mod ls;
 pub mod rm;
-pub mod touch;
 pub mod mv;
 pub mod echo;
 pub mod pwd_state;
+pub mod exit;
