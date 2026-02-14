@@ -32,7 +32,7 @@ fn main() -> io::Result<()> {
     );
 
     loop {
-        let current_display_dir = pwd_state.get_current_dir();
+        let current_display_dir = pwd_state.get_current_dir().replace("\n", "\\n");
 
         let prompt_len = if is_continuation { 2 } else { current_display_dir.len() + 2 };
 

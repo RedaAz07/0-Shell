@@ -28,7 +28,7 @@ pub fn execute(cmd: CommandEnum, pwd_state: &mut PwdState) -> bool {
             cp(c);
         }
         CommandEnum::Pwd => {
-            eprintln!("{}", pwd_state.get_current_dir());
+            eprintln!("{}", pwd_state.get_current_dir().replace("\n", "\\n"));
         }
 
         CommandEnum::Mkdir(dir) => {

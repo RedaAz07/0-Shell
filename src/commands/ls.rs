@@ -1,273 +1,494 @@
-use chrono::{DateTime, Local};
-use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
+use chrono::{ DateTime, Duration, Local };
+use std::cmp::max;
+use std::os::unix::fs::{ FileTypeExt, MetadataExt, PermissionsExt };
+use std::path::{ Path };
 use std::time::SystemTime;
-use std::{fs, path::Path};
+use std::{ fs };
+use users::{ get_group_by_gid, get_user_by_uid };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Flag {
     pub a: bool,
     pub l: bool,
-    pub f: bool,
+    pub f: bool, // (-F) indicators
+}
+
+#[derive(Clone)]
+struct LongEntry {
+    perms: String,
+    links: String,
+    user: String,
+    group: String,
+    size: String,
+    date: String,
+    name: String,
+    blocks: u64,
 }
 
 pub fn ls(args: Vec<String>) {
-    let mut flag = Flag {
-        a: false,
-        l: false,
-        f: false,
+    let (flag, files, dirs, errors) = parse_args(args);
+
+    // default path "."
+    let dirs = if files.is_empty() && dirs.is_empty() && errors.is_empty() {
+        vec![".".to_string()]
+    } else {
+        dirs
     };
 
+    // errors first
+    for e in &errors {
+        println!("ls: cannot access '{}': No such file or directory", e);
+    }
+    if !errors.is_empty() && files.is_empty() && dirs.is_empty() {
+        return;
+    }
+
+    // print files (before dirs)
+    if !files.is_empty() {
+        if flag.l {
+            let mut ents = Vec::new();
+            for p in &files {
+                if let Ok(m) = fs::symlink_metadata(p) {
+                    ents.push(prepare_long_entry(p.clone(), &m, flag, Path::new(p)));
+                }
+            }
+            if !ents.is_empty() {
+                print!("{}", align_and_format(ents, false));
+            }
+        } else {
+            for p in &files {
+                if let Ok(m) = fs::symlink_metadata(p) {
+                    let out = if flag.f { decorate_name(p.clone(), &m) } else { p.clone() };
+                    println!("{out}");
+                }
+            }
+        }
+    }
+
+    let show_headers = !files.is_empty() || dirs.len() > 1 || !errors.is_empty();
+
+    for (i, d) in dirs.iter().enumerate() {
+        if i > 0 || !files.is_empty() {
+            println!();
+        }
+        if show_headers {
+            println!("{}:", d);
+        }
+
+        if flag.l {
+            // long listing for directory
+            match build_long_entries_for_dir(d, flag) {
+                Ok(ents) => print!("{}", align_and_format(ents, true)),
+                Err(_) => {
+                    return;
+                }
+            }
+        } else {
+            // normal listing
+            match read_dir_names(d, flag.a) {
+                Ok(names) => {
+                    if names.is_empty() {
+                        continue;
+                    }
+                    if flag.f {
+                        // add indicators (same behavior as -F)
+                        let decorated = decorate_names_in_dir(d, names);
+                        println!("{}", decorated.join(" "));
+                    } else {
+                        println!("{}", names.join(" "));
+                    }
+                }
+                Err(e) => {
+                    eprintln!("ls: cannot access '{}': {}", d, e);
+                    return;
+                }
+            }
+        }
+    }
+}
+
+/* ---------------- parsing ---------------- */
+
+fn parse_args(args: Vec<String>) -> (Flag, Vec<String>, Vec<String>, Vec<String>) {
+    let mut flag = Flag::default();
     let mut files = Vec::new();
     let mut dirs = Vec::new();
     let mut errors = Vec::new();
 
-    let mut is_dir_marker = false;
+    let mut after_double_dash = false;
 
     for arg in args {
         if arg == "--" {
-            is_dir_marker = true;
+            after_double_dash = true;
             continue;
         }
 
-        if arg.starts_with("-") && !is_dir_marker {
-            if !is_flag(&arg, &mut flag) {
+        if arg.starts_with('-') && !after_double_dash {
+            if !parse_flag(&arg, &mut flag) {
                 println!("ls: unrecognized option '{arg}'");
-                println!("Try 'ls --help' for more information.");
-                return;
+                return (flag, vec![], vec![], vec!["__STOP__".into()]);
             }
             continue;
         }
 
-        let path = Path::new(&arg);
-
-        if path.exists() {
-            if path.is_file() {
-                files.push(arg);
-            } else {
+        let p = Path::new(&arg);
+        if p.exists() || fs::symlink_metadata(p).is_ok() {
+            if p.is_dir() && !p.is_symlink() {
                 dirs.push(arg);
+            } else {
+                files.push(arg);
             }
         } else {
             errors.push(arg);
         }
     }
 
-    if files.is_empty() && dirs.is_empty() && errors.is_empty() {
-        dirs.push(".".to_string());
+    // if we used __STOP__ trick, stop outside
+    if errors.len() == 1 && errors[0] == "__STOP__" {
+        return (flag, vec![], vec![], vec!["__STOP__".into()]);
     }
 
-    l(files, dirs, errors, flag);
+    (flag, files, dirs, errors)
 }
 
-fn l(files: Vec<String>, dirs: Vec<String>, errors: Vec<String>, flag: Flag) {
-    for err in &errors {
-        println!("ls: cannot access '{}': No such file or directory", err);
+fn parse_flag(arg: &str, flag: &mut Flag) -> bool {
+    if arg.len() <= 1 {
+        return false;
+    }
+    if !arg[1..].chars().all(|c| matches!(c, 'a' | 'l' | 'F')) {
+        return false;
+    }
+    for c in arg[1..].chars() {
+        match c {
+            'a' => {
+                flag.a = true;
+            }
+            'l' => {
+                flag.l = true;
+            }
+            'F' => {
+                flag.f = true;
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+/* ---------------- directory reading ---------------- */
+
+fn read_dir_names(dir: &str, show_hidden: bool) -> std::io::Result<Vec<String>> {
+    let mut names = Vec::new();
+
+    // -a adds "." and ".." (like your logic)
+    if show_hidden {
+        if fs::metadata(dir).is_ok() {
+            names.push(".".to_string());
+        }
+        if fs::metadata(Path::new(dir).join("..")).is_ok() {
+            names.push("..".to_string());
+        }
     }
 
-    for file_path in &files {
-        let path = Path::new(file_path);
-        if flag.l {
-            if let Ok(m) = fs::symlink_metadata(path) {
-                let name = path.file_name().unwrap().to_string_lossy().to_string();
-                print!("{}", format_long_item(name, &m, flag));
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let s = name.to_string_lossy().to_string();
+        if !show_hidden && s.starts_with('.') {
+            continue;
+        }
+        names.push(s);
+    }
+
+    // keep your "special first" + case-insensitive-ish sort
+    names.sort_by(|a, b| {
+        let a_spec = a == "." || a == "..";
+        let b_spec = b == "." || b == "..";
+        if a_spec != b_spec {
+            return if a_spec { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater };
+        }
+        if a_spec && b_spec {
+            return a.cmp(b);
+        }
+        let ca = a.trim_start_matches('.').to_lowercase();
+        let cb = b.trim_start_matches('.').to_lowercase();
+        ca.cmp(&cb)
+    });
+
+    Ok(names)
+}
+
+fn decorate_names_in_dir(dir: &str, names: Vec<String>) -> Vec<String> {
+    names
+        .into_iter()
+        .map(|name| {
+            let full = Path::new(dir).join(&name);
+            if let Ok(m) = fs::symlink_metadata(&full) {
+                decorate_name(name, &m)
+            } else {
+                name
             }
+        })
+        .collect()
+}
+
+fn build_long_entries_for_dir(dir: &str, flag: Flag) -> Result<Vec<LongEntry>, ()> {
+    let mut ents = Vec::new();
+
+    // if -a: add "." and ".."
+    if flag.a {
+        if let Ok(m) = fs::metadata(dir) {
+            ents.push(prepare_long_entry(".".to_string(), &m, flag, Path::new(dir)));
+        }
+        let parent = Path::new(dir).join("..");
+        if let Ok(m) = fs::metadata(&parent) {
+            ents.push(prepare_long_entry("..".to_string(), &m, flag, &parent));
+        }
+    }
+
+    let rd = fs::read_dir(dir).map_err(|_| ())?;
+    let mut items: Vec<_> = rd.filter_map(Result::ok).collect();
+
+    // keep your "clean alphanumeric" sort
+    items.sort_by(|a, b| {
+        let na = a.file_name().to_string_lossy().to_string();
+        let nb = b.file_name().to_string_lossy().to_string();
+        let clean = |s: &str|
+            s
+                .chars()
+                .filter(|c| c.is_alphanumeric())
+                .collect::<String>()
+                .to_lowercase();
+        let ka = clean(&na);
+        let kb = clean(&nb);
+        let ord = ka.cmp(&kb);
+        if ord == std::cmp::Ordering::Equal {
+            na.cmp(&nb)
         } else {
-            let mut name = file_path.clone();
-            if flag.f {
-                if let Ok(m) = fs::symlink_metadata(path) {
-                    if m.permissions().mode() & 0o111 != 0 {
-                        name.push('*');
-                    }
-                }
-            }
-            println!("{}", name);
+            ord
+        }
+    });
+
+    for e in items {
+        let name = e.file_name().to_string_lossy().to_string();
+        if !flag.a && name.starts_with('.') {
+            continue;
+        }
+        if let Ok(m) = e.metadata() {
+            ents.push(prepare_long_entry(name, &m, flag, &e.path()));
         }
     }
 
-    let show_headers = !files.is_empty() || dirs.len() > 1 || !errors.is_empty();
-
-    for (i, path_str) in dirs.iter().enumerate() {
-        if i > 0 || !files.is_empty() {
-            println!();
-        }
-
-        if show_headers {
-            println!("{}:", path_str);
-        }
-
-        match (flag.a, flag.l, flag.f) {
-            (false, false, false) => {
-                let r = get_dir_content(path_str, false).join(" ");
-                if !r.is_empty() {
-                    println!("{r}");
-                }
-            }
-            (true, false, false) => {
-                let r = get_dir_content(path_str, true).join(" ");
-                if !r.is_empty() {
-                    println!("{r}");
-                }
-            }
-            (false, true, _) | (true, true, _) => {
-                print!("{}", run_ls_l(path_str, flag));
-            }
-            (false, false, true) => {
-                let r = get_dir_content(path_str, false);
-                println!("{}", add_symbols(r, path_str));
-            }
-            (true, false, true) => {
-                let r = get_dir_content(path_str, true);
-                println!("{}", add_symbols(r, path_str));
-            }
-        }
-    }
+    Ok(ents)
 }
 
-fn run_ls_l(path: &str, flag: Flag) -> String {
-    let mut s = String::new();
-    if let Ok(entries) = fs::read_dir(path) {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                let name = entry.file_name().to_string_lossy().to_string();
+/* ---------------- formatting ---------------- */
 
-                if !flag.a && name.starts_with('.') {
-                    continue;
-                }
-
-                if let Ok(metadata) = entry.metadata() {
-                    let mut name = entry.file_name().to_string_lossy().to_string();
-
-                    if metadata.file_type().is_symlink() {
-                        if let Ok(target) = fs::read_link(entry.path()) {
-                            name.push_str(" -> ");
-                            name.push_str(&target.to_string_lossy());
-                        }
-                    }
-
-                    s.push_str(&format_long_item(name, &metadata, flag));
-                }
-            }
-        }
+fn decorate_name(mut name: String, m: &fs::Metadata) -> String {
+    let ft = m.file_type();
+    if m.is_dir() {
+        name.push('/');
+    } else if ft.is_symlink() {
+        name.push('@');
+    } else if ft.is_fifo() {
+        name.push('|');
+    } else if ft.is_socket() {
+        name.push('=');
+    } else if (m.permissions().mode() & 0o111) != 0 {
+        name.push('*');
     }
-    s
+    name
 }
 
-fn format_long_item(mut name: String, metadata: &fs::Metadata, flag: Flag) -> String {
-    if flag.f {
-        if metadata.is_dir() {
-            name.push('/');
-        } else if metadata.is_symlink() {
-            name.push('@');
-        } else if metadata.file_type().is_fifo() {
-            name.push('|');
-        } else if metadata.file_type().is_socket() {
-            name.push('=');
-        } else if (metadata.permissions().mode() & 0o111) != 0 {
-            name.push('*');
-        }
-    }
-
-    let type_char = if metadata.is_dir() {
-        'd'
-    } else if metadata.is_symlink() {
-        'l'
-    } else {
-        '-'
-    };
-
+fn format_permissions(metadata: &fs::Metadata, file_path: &Path) -> String {
     let mode = metadata.permissions().mode();
-    let perms = format_permissions(mode);
-    let nlink = metadata.nlink();
-    let uid = metadata.uid();
-    let gid = metadata.gid();
-    let size = metadata.len();
-    let modified = metadata.modified().unwrap_or(SystemTime::now());
-    let date_str = format_date(modified);
+    let mut s = String::with_capacity(11);
 
-    format!(
-        "{}{} {:>3} {:>5} {:>5} {:>8} {} {}\n",
-        type_char, perms, nlink, uid, gid, size, date_str, name
-    )
-}
-
-fn get_dir_content(path: &str, show_hidden: bool) -> Vec<String> {
-    let mut filenames = Vec::new();
-    match fs::read_dir(path) {
-        Ok(entries) => {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    let name = entry.file_name();
-                    if let Ok(name_str) = name.into_string() {
-                        if !show_hidden && name_str.starts_with('.') {
-                            continue;
-                        }
-                        filenames.push(name_str);
-                    }
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("ls: cannot access '{}': {}", path, e);
-        }
+    if metadata.is_dir() {
+        s.push('d');
+    } else if metadata.is_symlink() {
+        s.push('l');
+    } else if metadata.file_type().is_char_device() {
+        s.push('c');
+    } else if metadata.file_type().is_block_device() {
+        s.push('b');
+    } else if metadata.file_type().is_fifo() {
+        s.push('p');
+    } else if metadata.file_type().is_socket() {
+        s.push('s');
+    } else {
+        s.push('-');
     }
-    filenames.sort();
-    filenames
-}
 
-fn is_flag(arg: &String, flag: &mut Flag) -> bool {
-    if arg.len() > 1 && arg[1..].chars().all(|c| "alF".contains(c)) {
-        for c in arg[1..].chars() {
-            match c {
-                'a' => flag.a = true,
-                'l' => flag.l = true,
-                'F' => flag.f = true,
-                _ => break,
-            }
-        }
-        return true;
-    }
-    false
-}
-
-fn add_symbols(paths: Vec<String>, base: &str) -> String {
-    let mut result = Vec::new();
-    for mut path in paths {
-        let full_path = std::path::Path::new(base).join(&path);
-
-        if let Ok(metadata) = fs::symlink_metadata(&full_path) {
-            let file_type = metadata.file_type();
-
-            if file_type.is_dir() {
-                path.push('/');
-            } else if file_type.is_symlink() {
-                path.push('@');
-            } else if file_type.is_fifo() {
-                path.push('|');
-            } else if file_type.is_socket() {
-                path.push('=');
-            } else if (metadata.permissions().mode() & 0o111) != 0 {
-                path.push('*');
-            }
-        }
-        result.push(path);
-    }
-    result.join(" ")
-}
-
-fn format_permissions(mode: u32) -> String {
-    let mut s = String::new();
+    // user
     s.push(if (mode & 0o400) != 0 { 'r' } else { '-' });
     s.push(if (mode & 0o200) != 0 { 'w' } else { '-' });
-    s.push(if (mode & 0o100) != 0 { 'x' } else { '-' });
+    if (mode & 0o4000) != 0 {
+        s.push(if (mode & 0o100) != 0 { 's' } else { 'S' });
+    } else {
+        s.push(if (mode & 0o100) != 0 { 'x' } else { '-' });
+    }
+
+    // group
     s.push(if (mode & 0o040) != 0 { 'r' } else { '-' });
     s.push(if (mode & 0o020) != 0 { 'w' } else { '-' });
-    s.push(if (mode & 0o010) != 0 { 'x' } else { '-' });
+    if (mode & 0o2000) != 0 {
+        s.push(if (mode & 0o010) != 0 { 's' } else { 'S' });
+    } else {
+        s.push(if (mode & 0o010) != 0 { 'x' } else { '-' });
+    }
+
+    // other
     s.push(if (mode & 0o004) != 0 { 'r' } else { '-' });
     s.push(if (mode & 0o002) != 0 { 'w' } else { '-' });
-    s.push(if (mode & 0o001) != 0 { 'x' } else { '-' });
+    if (mode & 0o1000) != 0 {
+        s.push(if (mode & 0o001) != 0 { 't' } else { 'T' });
+    } else {
+        s.push(if (mode & 0o001) != 0 { 'x' } else { '-' });
+    }
+
+    let has_xattr = xattr
+        ::list(file_path)
+        .map(|mut i| i.next().is_some())
+        .unwrap_or(false);
+
+    s.push(if has_xattr { '+' } else { ' ' });
     s
 }
 
-fn format_date(time: SystemTime) -> String {
-    let datetime: DateTime<Local> = time.into();
-    datetime.format("%b %d %H:%M").to_string()
+fn format_date(modified: SystemTime) -> String {
+    let now = SystemTime::now();
+    let datetime: DateTime<Local> = modified.into();
+    let datetime = datetime + Duration::hours(1);
+
+    let six_months = std::time::Duration::from_secs(180 * 24 * 60 * 60);
+    let is_old_or_future = match now.duration_since(modified) {
+        Ok(d) => d > six_months,
+        Err(_) => true,
+    };
+
+    if is_old_or_future {
+        datetime.format("%b %d  %Y").to_string()
+    } else {
+        datetime.format("%b %d %H:%M").to_string()
+    }
+}
+
+fn align_and_format(entries: Vec<LongEntry>, show_total: bool) -> String {
+    if entries.is_empty() {
+        return String::new();
+    }
+
+    let mut w_links = 0;
+    let mut w_user = 0;
+    let mut w_group = 0;
+    let mut w_size = 0;
+    let mut w_date = 0;
+    let mut total_blocks = 0;
+
+    for e in &entries {
+        w_links = max(w_links, e.links.len());
+        w_user = max(w_user, e.user.len());
+        w_group = max(w_group, e.group.len());
+        w_size = max(w_size, e.size.len());
+        w_date = max(w_date, e.date.len());
+        total_blocks += e.blocks;
+    }
+
+    let mut out = String::new();
+    if show_total {
+        out.push_str(&format!("total {}\n", total_blocks / 2));
+    }
+
+    for e in entries {
+        out.push_str(
+            &format!(
+                "{} {:>lw$} {:<uw$} {:<gw$} {:>sw$} {:>dw$} {}\n",
+                e.perms,
+                e.links,
+                e.user,
+                e.group,
+                e.size,
+                e.date,
+                e.name,
+                lw = w_links,
+                uw = w_user,
+                gw = w_group,
+                sw = w_size,
+                dw = w_date
+            )
+        );
+    }
+
+    out
+}
+
+/* ---------------- long entry builder ---------------- */
+
+fn prepare_long_entry(
+    mut name: String,
+    m: &fs::Metadata,
+    flag: Flag,
+    full_path: &Path
+) -> LongEntry {
+    // -F on the file itself (but not for symlink here, same as your logic)
+    if flag.f && !m.is_symlink() {
+        name = decorate_name(name, m);
+    }
+
+    // symlink arrow target
+    if m.file_type().is_symlink() {
+        if let Ok(target) = fs::read_link(full_path) {
+            let mut target_str = target.to_string_lossy().to_string();
+
+            // if -F: decorate target based on resolved metadata
+            if flag.f {
+                let resolved = if target.is_absolute() {
+                    target.clone()
+                } else {
+                    full_path.parent().unwrap_or(Path::new(".")).join(&target)
+                };
+                if let Ok(tm) = fs::metadata(&resolved) {
+                    target_str = decorate_name(target_str, &tm);
+                }
+            }
+
+            name.push_str(" -> ");
+            name.push_str(&target_str);
+        }
+    }
+
+    let perms = format_permissions(m, full_path);
+    let links = m.nlink().to_string();
+
+    let uid = m.uid();
+    let user = get_user_by_uid(uid)
+        .map(|u| u.name().to_string_lossy().to_string())
+        .unwrap_or_else(|| uid.to_string());
+
+    let gid = m.gid();
+    let group = get_group_by_gid(gid)
+        .map(|g| g.name().to_string_lossy().to_string())
+        .unwrap_or_else(|| gid.to_string());
+
+    let size = if m.file_type().is_block_device() || m.file_type().is_char_device() {
+        let dev = m.rdev() as libc::dev_t;
+        let (maj, min) = (libc::major(dev), libc::minor(dev));
+        format!("{:>3}, {:>3}", maj, min)
+    } else {
+        m.len().to_string()
+    };
+
+    let date = format_date(m.modified().unwrap_or(SystemTime::now()));
+
+    LongEntry {
+        perms,
+        links,
+        user,
+        group,
+        size,
+        date,
+        name,
+        blocks: m.blocks(),
+    }
 }

@@ -124,6 +124,7 @@ pub fn parse_input(input: &str) -> ParseResult {
 
             let cmd = args[0].as_str();
             let cmd_args = args[1..].to_vec();
+            
 
             let parsed = match cmd {
                 "ls" => CommandEnum::Ls(cmd_args),
@@ -149,16 +150,7 @@ pub fn parse_input(input: &str) -> ParseResult {
     }
 }
 
-/* pub fn execute_all(cmds: CommandEnum, pwd_state: &mut PwdState) -> bool {
-    for cmd in cmds {
-        let keep_running = execute(cmd, pwd_state);
-        if !keep_running {
-            return false;
-        }
-    }
-    true
-}
- */
+
 pub fn execute_clear() {
     Command::new("clear")
         .status()
