@@ -68,7 +68,7 @@ pub fn cat(args: Vec<String>) {
                         Err(e) => eprintln!("Error writing to stdout: {}", e),
                     }
                 }
-                Err(e) => println!("{}", e),
+                Err(e) => eprintln!("{}", e),
             }
         }
     }

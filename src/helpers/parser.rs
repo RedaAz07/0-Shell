@@ -20,7 +20,6 @@ pub enum CommandEnum {
 pub enum ParseResult {
     Ok(Vec<CommandEnum>),
     Incomplete,
-    Err(String),
 }
 
 fn parse_tokens(input: &str) -> Result<Vec<String>, String> {
@@ -121,11 +120,8 @@ pub fn parse_input(input: &str) -> ParseResult {
             if args.is_empty() {
                 return ParseResult::Ok(vec![]);
             }
-
             let cmd = args[0].as_str();
             let cmd_args = args[1..].to_vec();
-            
-
             let parsed = match cmd {
                 "ls" => CommandEnum::Ls(cmd_args),
                 "cat" => CommandEnum::Cat(cmd_args),

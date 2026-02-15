@@ -1,6 +1,6 @@
 use std::path::Path;
 
-pub fn rm(args: Vec<String>) {
+pub fn rm(args: Vec<String>)  {
     let mut recursive = false;
 
     for arg in &args {
@@ -10,9 +10,10 @@ pub fn rm(args: Vec<String>) {
         }
         if arg.starts_with("-") {
             for c in arg[1..].chars() {
+                
                 if c != '-' && c != 'r' && c != 'R' {
                     println!("rm: invalid option -- '{}'", c);
-                    return;
+                    return ;
                 }
             }
 
@@ -20,18 +21,22 @@ pub fn rm(args: Vec<String>) {
         }
     }
 
-    let targets: Vec<&String> = args
-        .iter()
-        .filter(|a| !a.starts_with('-'))
-        .collect();
+    let targets: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
 
     if targets.is_empty() {
         println!("rm: missing operand");
-        return;
+        return ;
     }
 
     for arg in targets {
         let path = Path::new(arg);
+        if matches!(
+            path.file_name().and_then(|n| n.to_str()),
+            Some(".") | Some("..")
+        ) {
+            eprintln!("rm: refusing to remove '.' or '..' directory: skipping '..'");
+            continue;
+        }
 
         match std::fs::symlink_metadata(path) {
             Ok(meta) => {
@@ -56,4 +61,5 @@ pub fn rm(args: Vec<String>) {
             Err(e) => println!("rm: cannot remove '{}': {}", arg, e),
         }
     }
+    
 }

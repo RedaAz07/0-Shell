@@ -37,7 +37,6 @@ pub fn command_cd(args: Vec<String>, pwd_state: &mut PwdState) {
                 .map(PathBuf::from)
                 .unwrap_or_else(|_| { PathBuf::from(".") }),
     };
-    println!("{}", current_before_move.display());
 
     match env::set_current_dir(&target_dir) {
         Ok(_) => {
@@ -52,7 +51,7 @@ pub fn command_cd(args: Vec<String>, pwd_state: &mut PwdState) {
                 }
             }
         }
-        // ! new line errrr
-        Err(e) => eprintln!("cd: {}: {}", target_dir.display(), e),
+       
+        Err(e) => eprintln!("cd: {}: {}", target_dir.display().to_string().replace("\n", "\\n"), e),
     }
 }

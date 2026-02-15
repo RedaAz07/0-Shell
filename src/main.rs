@@ -116,15 +116,8 @@ fn main() -> io::Result<()> {
                                     is_continuation = true;
                                     break;
                                 }
-                                ParseResult::Err(e) => {
-                                    println!("Error: {}\r", e);
-                                    input_buffer.clear();
-                                    is_continuation = false;
-                                    break;
-                                }
                             }
                         }
-
                         _ => {}
                     }
                 }
