@@ -12,7 +12,7 @@ use crate::commands::{
 
 use super::parser::*;
 
-pub fn execute(cmd: CommandEnum, pwd_state: &mut PwdState) -> bool {
+pub fn execute(cmd: CommandEnum, pwd_state: &mut PwdState) {
     match cmd {
         CommandEnum::Mv(c) => mv(c),
         CommandEnum::Ls(c) => ls(c),
@@ -32,9 +32,14 @@ pub fn execute(cmd: CommandEnum, pwd_state: &mut PwdState) -> bool {
         }
 
         CommandEnum::Mkdir(dir) => {
-            for d in dir {
-                if let Err(e) = std::fs::create_dir(&d) {
-                    eprintln!("mkdir: cannot create directory '{}': {}", d, e);
+            if dir.is_empty() {
+                println!("mkdir: missing operand");
+              
+            }else {
+                for d in dir {
+                    if let Err(e) = std::fs::create_dir(&d) {
+                        eprintln!("mkdir: cannot create directory '{}': {}", d, e);
+                    }
                 }
             }
         }
@@ -53,5 +58,4 @@ pub fn execute(cmd: CommandEnum, pwd_state: &mut PwdState) -> bool {
             eprintln!("command not found: {}", cmd);
         }
     }
-    true
 }

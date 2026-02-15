@@ -439,7 +439,7 @@ fn prepare_long_entry(
     // symlink arrow target
     if m.file_type().is_symlink() {
         if let Ok(target) = fs::read_link(full_path) {
-            let mut target_str = target.to_string_lossy().to_string();
+            let mut target_str: String = target.to_string_lossy().to_string();
 
             // if -F: decorate target based on resolved metadata
             if flag.f {
