@@ -1,6 +1,6 @@
 use std::path::Path;
 
-pub fn rm(args: Vec<String>)  {
+pub fn rm(args: Vec<String>) {
     let mut recursive = false;
 
     for arg in &args {
@@ -10,10 +10,9 @@ pub fn rm(args: Vec<String>)  {
         }
         if arg.starts_with("-") {
             for c in arg[1..].chars() {
-                
                 if c != '-' && c != 'r' && c != 'R' {
-                    println!("rm: invalid option -- '{}'", c);
-                    return ;
+                    eprintln!("rm: invalid option -- '{}'", c);
+                    return;
                 }
             }
 
@@ -21,19 +20,24 @@ pub fn rm(args: Vec<String>)  {
         }
     }
 
-    let targets: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
+    let targets: Vec<&String> = args
+        .iter()
+        .filter(|a| !a.starts_with('-'))
+        .collect();
 
     if targets.is_empty() {
-        println!("rm: missing operand");
-        return ;
+        eprintln!("rm: missing operand");
+        return;
     }
 
     for arg in targets {
         let path = Path::new(arg);
-        if matches!(
-            path.file_name().and_then(|n| n.to_str()),
-            Some(".") | Some("..")
-        ) {
+        if
+            matches!(
+                path.file_name().and_then(|n| n.to_str()),
+                Some(".") | Some("..")
+            )
+        {
             eprintln!("rm: refusing to remove '.' or '..' directory: skipping '..'");
             continue;
         }
@@ -42,24 +46,30 @@ pub fn rm(args: Vec<String>)  {
             Ok(meta) => {
                 if meta.is_symlink() {
                     if let Err(e) = std::fs::remove_file(path) {
-                        println!("rm: cannot remove symlink '{}': {}", arg, e);
+                        eprintln!(
+                            "rm: cannot remove symlink '{}': {}",
+                            arg.replace("\n", "\\n"),
+                            e
+                        );
                     }
                 } else if meta.is_dir() {
                     if !recursive {
-                        println!("rm: cannot remove '{}': Is a directory", arg);
+                        eprintln!(
+                            "rm: cannot remove '{}': Is a directory",
+                            arg.replace("\n", "\\n")
+                        );
                     } else {
                         if let Err(e) = std::fs::remove_dir_all(path) {
-                            println!("rm: cannot remove '{}': {}", arg, e);
+                            eprintln!("rm: cannot remove '{}': {}", arg.replace("\n", "\\n"), e);
                         }
                     }
                 } else {
                     if let Err(e) = std::fs::remove_file(path) {
-                        println!("rm: cannot remove '{}': {}", arg, e);
+                        eprintln!("rm: cannot remove '{}': {}", arg.replace("\n", "\\n"), e);
                     }
                 }
             }
-            Err(e) => println!("rm: cannot remove '{}': {}", arg, e),
+            Err(e) => eprintln!("rm: cannot remove '{}': {}", arg.replace("\n", "\\n"), e),
         }
     }
-    
 }

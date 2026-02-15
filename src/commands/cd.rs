@@ -1,12 +1,14 @@
-use std::{ env, path::PathBuf };
 use crate::commands::pwd_state::PwdState;
+use std::{ env, path::PathBuf };
 
-pub fn command_cd(args: Vec<String>, pwd_state: &mut PwdState) {
+pub fn command_cd( mut args: Vec<String>, pwd_state: &mut PwdState) {
     if args.len() > 1 {
         eprintln!("cd: too many arguments");
         return;
     }
-
+    if args.len() == 1 {
+        args[0] = args[0].replace("\\n", "\n");
+    }
     let target_dir = if args.is_empty() {
         match env::var("HOME") {
             Ok(path) => PathBuf::from(path),
@@ -29,29 +31,18 @@ pub fn command_cd(args: Vec<String>, pwd_state: &mut PwdState) {
         PathBuf::from(&args[0])
     };
 
-    let current_before_move = match env::current_dir() {
-        Ok(p) => p,
-        Err(_) =>
-            env
-                ::var("PWD")
-                .map(PathBuf::from)
-                .unwrap_or_else(|_| { PathBuf::from(".") }),
-    };
+    let current_before_move = pwd_state.get_current_dir();
 
     match env::set_current_dir(&target_dir) {
         Ok(_) => {
             if let Ok(new_current) = env::current_dir() {
-                pwd_state.set_states(
-                    new_current.display().to_string(),
-                    current_before_move.display().to_string()
-                );
+                pwd_state.set_states(new_current.display().to_string(), current_before_move);
 
-                if !args.is_empty() && args[0] == "-" {
-                    eprintln!("{}", pwd_state.get_current_dir().replace("\n", "\\n"));
-                }
+            } else {
+                pwd_state.set_states(PathBuf::from(".").display().to_string(), current_before_move);
             }
+            return;
         }
-       
-        Err(e) => eprintln!("cd: {}: {}", target_dir.display().to_string().replace("\n", "\\n"), e),
+        Err(e) => eprintln!("cd: {}: {}", args[0].replace("\n", "\\n"), e),
     }
 }

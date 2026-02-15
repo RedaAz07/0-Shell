@@ -1,9 +1,7 @@
 use std::env;
 use std::io::{ self, stdout, Write };
-
 pub mod commands;
 pub mod helpers;
-
 use commands::pwd_state::*;
 use crossterm::cursor::MoveToColumn;
 use crossterm::event::{ self, Event, KeyCode, KeyEventKind, KeyModifiers };

@@ -23,14 +23,14 @@ pub fn mv(args: Vec<String>) {
 
         match fs::rename(src_path, &final_dst) {
             Ok(_) => (),
-            Err(e) => println!("mv: cannot moveee '{}': {}", src, e),
+            Err(e) => println!("mv: cannot moveee '{}': {}", src.replace("\n", "\\n"), e),
         }
         return ;
     } else if args.len() > 2 {
         let dst_dir = Path::new(args.last().unwrap());
 
         if !dst_dir.is_dir() {
-            println!("mv: target '{}' is not a directory", dst_dir.display());
+            println!("mv: target '{}' is not a directory", dst_dir.display().to_string().replace("\n", "\\n"));
             return ;
         }
 
@@ -42,7 +42,7 @@ pub fn mv(args: Vec<String>) {
                 let dst = dst_dir.join(file_name);
                 match fs::rename(src_path, &dst) {
                     Ok(_) => (),
-                    Err(e) => println!("mv: cannot move '{}': {}", src, e),
+                    Err(e) => println!("mv: cannot move '{}': {}", src.replace("\n", "\\n"), e),
                 }
             }
         }
