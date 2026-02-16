@@ -37,7 +37,7 @@ pub fn ls(args: Vec<String>) {
 
     // errors first
     for e in &errors {
-        println!("ls: cannot access '{}': No such file or directory", e);
+        eprintln!("ls: cannot access '{}': No such file or directory", e);
     }
     if !errors.is_empty() && files.is_empty() && dirs.is_empty() {
         return;
@@ -64,7 +64,7 @@ pub fn ls(args: Vec<String>) {
             }
         }
     }
-
+    //print directories
     let show_headers = !files.is_empty() || dirs.len() > 1 || !errors.is_empty();
 
     for (i, d) in dirs.iter().enumerate() {
@@ -234,7 +234,6 @@ fn decorate_names_in_dir(dir: &str, names: Vec<String>) -> Vec<String> {
 
 fn build_long_entries_for_dir(dir: &str, flag: Flag) -> Result<Vec<LongEntry>, ()> {
     let mut ents = Vec::new();
-
     // if -a: add "." and ".."
     if flag.a {
         if let Ok(m) = fs::metadata(dir) {
@@ -248,7 +247,7 @@ fn build_long_entries_for_dir(dir: &str, flag: Flag) -> Result<Vec<LongEntry>, (
 
     let rd = fs::read_dir(dir).map_err(|_| ())?;
     let mut items: Vec<_> = rd.filter_map(Result::ok).collect();
-
+  
     // keep your "clean alphanumeric" sort
     items.sort_by(|a, b| {
         let na = a.file_name().to_string_lossy().to_string();
@@ -324,19 +323,16 @@ fn format_permissions(metadata: &fs::Metadata, file_path: &Path) -> String {
     s.push(if (mode & 0o400) != 0 { 'r' } else { '-' });
     s.push(if (mode & 0o200) != 0 { 'w' } else { '-' });
     s.push(if (mode & 0o100) != 0 { 'x' } else { '-' });
-   
 
     // group
     s.push(if (mode & 0o040) != 0 { 'r' } else { '-' });
     s.push(if (mode & 0o020) != 0 { 'w' } else { '-' });
     s.push(if (mode & 0o010) != 0 { 'x' } else { '-' });
-   
 
     // other
     s.push(if (mode & 0o004) != 0 { 'r' } else { '-' });
     s.push(if (mode & 0o002) != 0 { 'w' } else { '-' });
     s.push(if (mode & 0o001) != 0 { 'x' } else { '-' });
-   
 
     let has_xattr = xattr
         ::list(file_path)
@@ -350,7 +346,7 @@ fn format_permissions(metadata: &fs::Metadata, file_path: &Path) -> String {
 fn format_date(modified: SystemTime) -> String {
     let now = SystemTime::now();
     let datetime: DateTime<Local> = modified.into();
-   let datetime = datetime + Duration::hours(1);
+    let datetime = datetime + Duration::hours(1);
 
     let six_months = std::time::Duration::from_secs(180 * 24 * 60 * 60);
     let is_old_or_future = match now.duration_since(modified) {

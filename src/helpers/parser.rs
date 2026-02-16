@@ -133,10 +133,7 @@ pub fn parse_input(input: &str) -> ParseResult {
                 "rm" => CommandEnum::Rm(cmd_args),
                 "mkdir" => CommandEnum::Mkdir(cmd_args),
                 "exit" => CommandEnum::Exit,
-                "clear" => {
-                    execute_clear();
-                    return ParseResult::Ok(vec![]);
-                }
+               
                 _ => CommandEnum::Unknown(args[0].clone()),
             };
 
@@ -146,9 +143,3 @@ pub fn parse_input(input: &str) -> ParseResult {
     }
 }
 
-
-pub fn execute_clear() {
-    Command::new("clear")
-        .status()
-        .expect("Failed to execute clear command");
-}
