@@ -323,29 +323,20 @@ fn format_permissions(metadata: &fs::Metadata, file_path: &Path) -> String {
     // user
     s.push(if (mode & 0o400) != 0 { 'r' } else { '-' });
     s.push(if (mode & 0o200) != 0 { 'w' } else { '-' });
-    if (mode & 0o4000) != 0 {
-        s.push(if (mode & 0o100) != 0 { 's' } else { 'S' });
-    } else {
-        s.push(if (mode & 0o100) != 0 { 'x' } else { '-' });
-    }
+    s.push(if (mode & 0o100) != 0 { 'x' } else { '-' });
+   
 
     // group
     s.push(if (mode & 0o040) != 0 { 'r' } else { '-' });
     s.push(if (mode & 0o020) != 0 { 'w' } else { '-' });
-    if (mode & 0o2000) != 0 {
-        s.push(if (mode & 0o010) != 0 { 's' } else { 'S' });
-    } else {
-        s.push(if (mode & 0o010) != 0 { 'x' } else { '-' });
-    }
+    s.push(if (mode & 0o010) != 0 { 'x' } else { '-' });
+   
 
     // other
     s.push(if (mode & 0o004) != 0 { 'r' } else { '-' });
     s.push(if (mode & 0o002) != 0 { 'w' } else { '-' });
-    if (mode & 0o1000) != 0 {
-        s.push(if (mode & 0o001) != 0 { 't' } else { 'T' });
-    } else {
-        s.push(if (mode & 0o001) != 0 { 'x' } else { '-' });
-    }
+    s.push(if (mode & 0o001) != 0 { 'x' } else { '-' });
+   
 
     let has_xattr = xattr
         ::list(file_path)
@@ -359,7 +350,7 @@ fn format_permissions(metadata: &fs::Metadata, file_path: &Path) -> String {
 fn format_date(modified: SystemTime) -> String {
     let now = SystemTime::now();
     let datetime: DateTime<Local> = modified.into();
-    let datetime = datetime + Duration::hours(1);
+   let datetime = datetime + Duration::hours(1);
 
     let six_months = std::time::Duration::from_secs(180 * 24 * 60 * 60);
     let is_old_or_future = match now.duration_since(modified) {

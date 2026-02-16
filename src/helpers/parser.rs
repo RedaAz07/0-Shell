@@ -35,7 +35,7 @@ fn parse_tokens(input: &str) -> Result<Vec<String>, String> {
 
     let mut mode = Mode::Normal;
     let mut escaped = false;
-    let mut chars = input.chars().peekable();
+    let mut chars = input.chars();
 
     while let Some(c) = chars.next() {
         if escaped {
